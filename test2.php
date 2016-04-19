@@ -8,8 +8,8 @@
 
 //require_once "JSONParser/package/JSONParser.php";
 require_once "jsonstreamingparser/vendor/autoload.php";
-error_reporting(E_ALL);
-$testfile = dirname(__FILE__) . '/WFProducts.json';
+//error_reporting(E_ALL);
+
 
 
 class ProductListener implements \JsonStreamingParser\Listener
@@ -28,7 +28,7 @@ class ProductListener implements \JsonStreamingParser\Listener
   private $numRecords = 0;
 
   public function __construct($setting = false) {
-    $this->counter_only = (bool) $counter_only;
+    $this->counter_only = (bool) $setting;
   }
   public function setCounterOnly($setting) {
     $this->counter_only = (bool) $setting;
@@ -55,22 +55,29 @@ class ProductListener implements \JsonStreamingParser\Listener
   public function endObject() {
     switch($this->current_object) {
       case "stores";
-        //Check if we already added this product so we don't repeat it.
+        //If I arrive here with $this->store_specific empty I've finished all
+        // variants of a product.
+        if (empty($this->store_specific)) {
+          return;
+        }
         $new_product = array_merge($this->product, $this->store_specific);
-        $prev_product = $this->products[sizeof($this->products)-1]; //could I use end($this->products) ?
-        $diff = array_diff($new_product, $prev_product);
-        if (!empty($diff) || is_null($prev_product)) {
-          //add this product to the products array.
+        $prev_product = array();
+        $diff = array();
+        if (!empty($this->products)) {
+//          $prev_product = $this->products[sizeof($this->products)-1];
+          $prev_product = end($this->products);
+        }
+        $diff = array_diff_assoc($new_product, $prev_product);
+
+        //New item?  - save it.
+        if (!empty($diff)) {
           $this->products[] = $new_product;
           //Clear the store specific array so it can get used for the next run
           $this->store_specific = array();
-        }
-        //Finished with all variants of a product
-        if (empty($diff)) {
-            $this->numRecords += sizeof($this->products);
-          //For counter-only code - throw away the products.
+          $this->numRecords++;
           if ($this->counter_only == true) {
-            $this->products = array();
+            //Throw away the array and keep the last item for comparison.
+            $this->products = array(end($this->products));
           }
         }
         break;
@@ -155,7 +162,8 @@ class ProductListener implements \JsonStreamingParser\Listener
   }
 
 }
-
+$testfile = dirname(__FILE__) . '/WFProducts.json';
+$testfile = dirname(__FILE__) . '/WFProducts2.json';
 //$listener = new \JsonStreamingParser\Listener\InMemoryListener();
 $listener = new ProductListener();
 $stream = fopen($testfile,'r');
@@ -172,10 +180,13 @@ try {
   $parser->parse();
   fclose($stream);
 
-
 } catch (Exception $e) {
   fclose($stream);
   throw $e;
 }
+$prods = $listener->getProducts();
+foreach ($prods as $key => $value) {
+  echo $key . ': ' . $prods[$key]['identifier'] . ' - ' . $prods[$key]['tlc'] . "\n";
+}
 
-var_dump($listener->getProducts());
+//var_dump($listener->getProducts());
